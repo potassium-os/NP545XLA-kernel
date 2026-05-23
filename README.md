@@ -17,7 +17,7 @@ git clone --depth 1 --branch v7.0 https://github.com/torvalds/linux.git linux
 
 # Build everything: kernel + DTBs + modules
 docker build --platform linux/arm64 -t np545xla-kernel-build .
-docker run --platform linux/arm64 --rm -v "$PWD":/work np545xla-kernel-build /work/src/build.sh all
+docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev np545xla-kernel-build /work/src/build.sh all
 ```
 
 ## Build Targets
@@ -34,11 +34,17 @@ docker run --platform linux/arm64 --rm -v "$PWD":/work np545xla-kernel-build /wo
 
 ## Build the Boot ISO
 
+Requires `-v /dev:/dev` for loop device access inside the container:
+
 ```bash
 docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev np545xla-kernel-build /work/src/build.sh iso
 ```
 
-Flash: `dd if=build/np545xla-boot.iso of=/dev/sdX bs=4M status=progress`
+With Ubuntu initrd fallback:
+
+```bash
+docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev np545xla-kernel-build /work/src/build-iso.sh /work/src/ubuntu-26.04-desktop-arm64.iso
+```
 
 ## Configuration
 

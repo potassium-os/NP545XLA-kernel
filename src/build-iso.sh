@@ -2,7 +2,7 @@
 # Build a bootable ISO for NP545XLA DT boot
 #
 # Runs INSIDE the Docker container. Don't run this directly on the host.
-# Use: docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev np545xla-build /work/src/build-iso.sh
+# Use: docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev np545xla-kernel-build /work/src/build-iso.sh [ubuntu-arm64.iso]
 #
 # Expects kernel build output at:
 #   output/vmlinuz-np545xla
@@ -18,8 +18,17 @@ BUILD_DIR="$WORK/build"
 OUTPUT="$WORK/output"
 ISO_OUT="$BUILD_DIR/np545xla-boot.iso"
 UBUNTU_ISO="${1:-$WORK/src/ubuntu-26.04-desktop-arm64.iso}"
+UBUNTU_ISO_URL="https://cdimage.ubuntu.com/cdimage/releases/26.04/release/ubuntu-26.04-desktop-arm64.iso"
 
 mkdir -p "$BUILD_DIR"
+
+# Download Ubuntu ISO if not present (needed for initrd)
+if [ ! -f "$UBUNTU_ISO" ]; then
+    echo "Ubuntu ISO not found at $UBUNTU_ISO"
+    echo "Downloading from $UBUNTU_ISO_URL ..."
+    mkdir -p "$(dirname "$UBUNTU_ISO")"
+    curl -fSL -o "$UBUNTU_ISO" "$UBUNTU_ISO_URL"
+fi
 
 echo "========================================="
 echo " NP545XLA ISO Builder"
@@ -82,7 +91,14 @@ fi
 if [ -z "$DTB" ] && [ -f "$WORK/dts/sc8180xp-samsung-np545xla.dts" ]; then
     echo "Building DTB from dts/..."
     if command -v dtc &>/dev/null; then
-        dtc -I dts -O dtb -o "$BUILD_DIR/sc8180xp-samsung-np545xla.dtb" "$WORK/dts/sc8180xp-samsung-np545xla.dts"
+        cpp -nostdinc -I "$WORK/linux/include" \
+            -I "$WORK/linux/arch/arm64/boot/dts" \
+            -I "$WORK/linux/arch/arm64/boot/dts/qcom" \
+            -undef -x assembler-with-cpp \
+            "$WORK/dts/sc8180xp-samsung-np545xla.dts" \
+            > /tmp/np545xla.dts.prep && \
+        dtc -I dts -O dtb -o "$BUILD_DIR/sc8180xp-samsung-np545xla.dtb" /tmp/np545xla.dts.prep 2>&1 || \
+        echo "  WARNING: DTB build failed"
         DTB="$BUILD_DIR/sc8180xp-samsung-np545xla.dtb"
         echo "DTB: built from dts/"
     fi

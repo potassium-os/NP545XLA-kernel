@@ -43,7 +43,15 @@ build_dtbs() {
     # Fallback: build our custom DTS directly
     if [ ! -f "$OUTPUT/dtbs/qcom/sc8180xp-samsung-np545xla.dtb" ] && [ -f "$WORK/dts/sc8180xp-samsung-np545xla.dts" ]; then
         echo "  Building custom DTB from dts/..."
-        dtc -I dts -O dtb -o "$OUTPUT/dtbs/qcom/sc8180xp-samsung-np545xla.dtb" "$WORK/dts/sc8180xp-samsung-np545xla.dts" 2>/dev/null || true
+        echo "  Building custom DTB from dts/..."
+        cpp -nostdinc -I "$WORK/linux/include" \
+            -I "$WORK/linux/arch/arm64/boot/dts" \
+            -I "$WORK/linux/arch/arm64/boot/dts/qcom" \
+            -undef -x assembler-with-cpp \
+            "$WORK/dts/sc8180xp-samsung-np545xla.dts" \
+            > /tmp/np545xla.dts.prep && \
+        dtc -I dts -O dtb -o "$OUTPUT/dtbs/qcom/sc8180xp-samsung-np545xla.dtb" /tmp/np545xla.dts.prep 2>&1 || \
+        echo "  WARNING: DTB build failed"
     fi
 }
 

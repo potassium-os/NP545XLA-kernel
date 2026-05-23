@@ -5,6 +5,8 @@ ENV DEBIAN_FRONTEND=noninteractive
 # Kernel build deps + ISO creation (native arm64 via QEMU binfmt)
 RUN apt-get update && apt-get install -y \
     build-essential \
+    curl \
+    device-tree-compiler \
     bc \
     bison \
     flex \
