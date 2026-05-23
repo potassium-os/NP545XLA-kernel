@@ -1,0 +1,12 @@
+# Build output
+output/
+build/
+
+# Kernel source (shallow clone)
+linux/
+
+# DTS intermediate files
+dts/*.dts.pre
+
+# ISO images (too large for git)
+src/*.iso

@@ -1,0 +1,68 @@
+name: Build NP545XLA Kernel
+
+on:
+  push:
+    branches: [main]
+    paths-ignore:
+      - '**.md'
+      - 'docs/**'
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+    inputs:
+      kernel_version:
+        description: 'Kernel tag to build (e.g. v7.0)'
+        required: false
+        default: 'v7.0'
+      build_target:
+        description: 'Build target (kernel, dtbs, modules, all)'
+        required: false
+        default: 'all'
+
+env:
+  KERNEL_TAG: ${{ github.event.inputs.kernel_version || 'v7.0' }}
+  BUILD_TARGET: ${{ github.event.inputs.build_target || 'all' }}
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Clone kernel source
+        run: |
+          if [ ! -d linux ]; then
+            git clone --depth 1 --branch ${KERNEL_TAG} \
+              https://github.com/torvalds/linux.git linux
+          fi
+
+      - name: Build Docker image
+        run: docker build --platform linux/arm64 -t np545xla-kernel-build .
+
+      - name: Build kernel
+        run: |
+          docker run --platform linux/arm64 --rm \
+            -v "$PWD":/work \
+            np545xla-kernel-build \
+            /work/src/build.sh ${BUILD_TARGET}
+
+      - name: Upload kernel image
+        uses: actions/upload-artifact@v4
+        with:
+          name: vmlinuz-np545xla
+          path: output/vmlinuz-np545xla
+
+      - name: Upload DTBs
+        uses: actions/upload-artifact@v4
+        with:
+          name: dtbs-np545xla
+          path: output/dtbs/
+
+      - name: Upload modules
+        uses: actions/upload-artifact@v4
+        with:
+          name: modules-np545xla
+          path: output/modules/
