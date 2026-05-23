@@ -4,31 +4,22 @@
 # Runs INSIDE the Docker container. Don't run this directly on the host.
 # Use: docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev np545xla-kernel-build /work/src/build-iso.sh [ubuntu-arm64.iso]
 #
-# Expects kernel build output at:
-#   output/vmlinuz-np545xla
-#   output/dtbs/qcom/sc8180xp-samsung-np545xla.dtb
-#   output/modules/ (for initrd generation)
+# Produces a bootable ISO9660 image (El Torito EFI boot) that Samsung UEFI
+# can actually detect. Samsung firmware only boots ISOs and needs a real
+# FAT ESP partition embedded in the GPT, not just a file in the ISO filesystem.
 #
-# If output/ is empty, tries to extract from Ubuntu ISO as fallback.
+# Flash with: dd if=build/np545xla-boot.iso of=/dev/sdX bs=4M status=progress
 
 set -euo pipefail
 
 WORK="/work"
+GRUB_CFG="$WORK/src/grub.cfg"
 BUILD_DIR="$WORK/build"
-OUTPUT="$WORK/output"
 ISO_OUT="$BUILD_DIR/np545xla-boot.iso"
 UBUNTU_ISO="${1:-$WORK/src/ubuntu-26.04-desktop-arm64.iso}"
 UBUNTU_ISO_URL="https://cdimage.ubuntu.com/cdimage/releases/26.04/release/ubuntu-26.04-desktop-arm64.iso"
 
 mkdir -p "$BUILD_DIR"
-
-# Download Ubuntu ISO if not present (needed for initrd)
-if [ ! -f "$UBUNTU_ISO" ]; then
-    echo "Ubuntu ISO not found at $UBUNTU_ISO"
-    echo "Downloading from $UBUNTU_ISO_URL ..."
-    mkdir -p "$(dirname "$UBUNTU_ISO")"
-    curl -fSL -o "$UBUNTU_ISO" "$UBUNTU_ISO_URL"
-fi
 
 echo "========================================="
 echo " NP545XLA ISO Builder"
@@ -38,26 +29,51 @@ echo "========================================="
 
 VMLINUZ=""
 INITRD=""
-DTB=""
+DTB_FINAL=""
 
 # Custom kernel from output/
-if [ -f "$OUTPUT/vmlinuz-np545xla" ]; then
-    VMLINUZ="$OUTPUT/vmlinuz-np545xla"
+if [ -f "$WORK/output/vmlinuz-np545xla" ]; then
+    VMLINUZ="$WORK/output/vmlinuz-np545xla"
     echo "Kernel: custom (output/vmlinuz-np545xla)"
 fi
 
-if [ -f "$OUTPUT/dtbs/qcom/sc8180xp-samsung-np545xla.dtb" ]; then
-    DTB="$OUTPUT/dtbs/qcom/sc8180xp-samsung-np545xla.dtb"
+# Custom DTB from output/ (preferred) or build from dts/
+if [ -f "$WORK/output/dtbs/qcom/sc8180xp-samsung-np545xla.dtb" ]; then
+    DTB_FINAL="$WORK/output/dtbs/qcom/sc8180xp-samsung-np545xla.dtb"
     echo "DTB: custom (output/dtbs/qcom/sc8180xp-samsung-np545xla.dtb)"
+elif [ -f "$WORK/dts/sc8180xp-samsung-np545xla.dts" ]; then
+    echo "Building DTB from dts/..."
+    cpp -nostdinc -I "$WORK/linux/include" \
+        -I "$WORK/linux/arch/arm64/boot/dts" \
+        -I "$WORK/linux/arch/arm64/boot/dts/qcom" \
+        -undef -x assembler-with-cpp \
+        "$WORK/dts/sc8180xp-samsung-np545xla.dts" \
+        > /tmp/np545xla.dts.prep && \
+    dtc -I dts -O dtb -o "$BUILD_DIR/sc8180xp-samsung-np545xla.dtb" /tmp/np545xla.dts.prep 2>&1 || \
+    echo "  WARNING: DTB build failed"
+    DTB_FINAL="$BUILD_DIR/sc8180xp-samsung-np545xla.dtb"
+    echo "DTB: built from dts/"
 fi
 
-# Fallback: extract from Ubuntu ISO
-if [ -z "$VMLINUZ" ] || [ -z "$DTB" ]; then
+# Initrd: prefer custom, fall back to Ubuntu ISO
+if [ -f "$WORK/output/initrd.img" ]; then
+    INITRD="$WORK/output/initrd.img"
+    echo "Initrd: custom (output/initrd.img)"
+elif [ -z "$INITRD" ]; then
+    # Download Ubuntu ISO if not present
+    if [ ! -f "$UBUNTU_ISO" ]; then
+        echo "Ubuntu ISO not found at $UBUNTU_ISO"
+        echo "Downloading from $UBUNTU_ISO_URL ..."
+        mkdir -p "$(dirname "$UBUNTU_ISO")"
+        curl -fSL -o "$UBUNTU_ISO" "$UBUNTU_ISO_URL"
+    fi
+
     if [ -f "$UBUNTU_ISO" ]; then
-        echo "Falling back to Ubuntu ISO for missing components..."
+        echo "Extracting initrd from Ubuntu ISO..."
         ISO_MNT=$(mktemp -d)
         mount -o ro,loop "$UBUNTU_ISO" "$ISO_MNT"
 
+        # Also grab kernel from ISO if we don't have a custom one
         if [ -z "$VMLINUZ" ]; then
             for vmlinuz in vmlinuz vmlinuz.efi; do
                 if [ -f "$ISO_MNT/casper/$vmlinuz" ]; then
@@ -69,38 +85,17 @@ if [ -z "$VMLINUZ" ] || [ -z "$DTB" ]; then
             done
         fi
 
-        if [ -z "$INITRD" ]; then
-            for initrd in initrd initrd.gz; do
-                if [ -f "$ISO_MNT/casper/$initrd" ]; then
-                    cp "$ISO_MNT/casper/$initrd" "$BUILD_DIR/initrd.img"
-                    INITRD="$BUILD_DIR/initrd.img"
-                    echo "Initrd: Ubuntu fallback ($initrd)"
-                    break
-                fi
-            done
-        fi
+        for initrd in initrd initrd.gz; do
+            if [ -f "$ISO_MNT/casper/$initrd" ]; then
+                cp "$ISO_MNT/casper/$initrd" "$BUILD_DIR/initrd.img"
+                INITRD="$BUILD_DIR/initrd.img"
+                echo "Initrd: Ubuntu ($initrd)"
+                break
+            fi
+        done
 
         umount "$ISO_MNT"
         rmdir "$ISO_MNT"
-    else
-        echo "WARNING: No Ubuntu ISO at $UBUNTU_ISO"
-    fi
-fi
-
-# Fallback: build DTB from dts/
-if [ -z "$DTB" ] && [ -f "$WORK/dts/sc8180xp-samsung-np545xla.dts" ]; then
-    echo "Building DTB from dts/..."
-    if command -v dtc &>/dev/null; then
-        cpp -nostdinc -I "$WORK/linux/include" \
-            -I "$WORK/linux/arch/arm64/boot/dts" \
-            -I "$WORK/linux/arch/arm64/boot/dts/qcom" \
-            -undef -x assembler-with-cpp \
-            "$WORK/dts/sc8180xp-samsung-np545xla.dts" \
-            > /tmp/np545xla.dts.prep && \
-        dtc -I dts -O dtb -o "$BUILD_DIR/sc8180xp-samsung-np545xla.dtb" /tmp/np545xla.dts.prep 2>&1 || \
-        echo "  WARNING: DTB build failed"
-        DTB="$BUILD_DIR/sc8180xp-samsung-np545xla.dtb"
-        echo "DTB: built from dts/"
     fi
 fi
 
@@ -109,17 +104,14 @@ if [ -z "$VMLINUZ" ]; then
     exit 1
 fi
 
-if [ -z "$DTB" ]; then
+if [ -z "$DTB_FINAL" ]; then
     echo "ERROR: No DTB found. Run 'build.sh dtbs' first."
     exit 1
 fi
 
 if [ -z "$INITRD" ]; then
     echo "WARNING: No initrd. System may not boot to a shell."
-    echo "  Provide one via Ubuntu ISO or build a custom initrd."
 fi
-
-GRUB_CFG="$WORK/src/grub.cfg"
 
 # --- Step 1: Prepare ISO filesystem tree ---
 ISO_ROOT="$BUILD_DIR/iso-staging"
@@ -130,7 +122,7 @@ mkdir -p "$ISO_ROOT/EFI/BOOT"
 
 echo ""
 echo "[1/5] Staging files..."
-cp "$DTB" "$ISO_ROOT/boot/dtb/qcom/"
+cp "$DTB_FINAL" "$ISO_ROOT/boot/dtb/qcom/"
 cp "$GRUB_CFG" "$ISO_ROOT/boot/grub/grub.cfg"
 cp "$VMLINUZ" "$ISO_ROOT/boot/vmlinuz"
 [ -n "$INITRD" ] && cp "$INITRD" "$ISO_ROOT/boot/initrd.img"
@@ -183,7 +175,7 @@ cp "$BUILD_DIR/bootaa64.efi" "$ISO_ROOT/EFI/BOOT/BOOTAA64.EFI"
 echo "[3/5] Building ESP partition image..."
 
 ESP_IMG="$BUILD_DIR/esp.img"
-ESP_SIZE_MB=64
+ESP_SIZE_MB=256
 
 dd if=/dev/zero of="$ESP_IMG" bs=1M count="$ESP_SIZE_MB" status=none
 mkfs.vfat -F 32 -n EFI "$ESP_IMG"
@@ -195,7 +187,7 @@ mkdir -p "$MNT/boot/grub"
 mkdir -p "$MNT/boot/dtb/qcom"
 cp "$BUILD_DIR/bootaa64.efi" "$MNT/EFI/BOOT/BOOTAA64.EFI"
 cp "$GRUB_CFG" "$MNT/boot/grub/grub.cfg"
-cp "$DTB" "$MNT/boot/dtb/qcom/"
+cp "$DTB_FINAL" "$MNT/boot/dtb/qcom/"
 cp "$VMLINUZ" "$MNT/boot/vmlinuz"
 [ -n "$INITRD" ] && cp "$INITRD" "$MNT/boot/initrd.img"
 umount "$MNT"
