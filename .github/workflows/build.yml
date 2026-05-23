@@ -39,6 +39,9 @@ jobs:
               https://github.com/torvalds/linux.git linux
           fi
 
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
       - name: Build Docker image
         run: docker build --platform linux/arm64 -t np545xla-kernel-build .
 

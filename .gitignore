@@ -5,7 +5,8 @@ build/
 # Kernel source (shallow clone)
 linux/
 
-# DTS intermediate files
+# DTS intermediate/build artifacts
+dts/*.dtb
 dts/*.dts.pre
 
 # ISO images (too large for git)
