@@ -43,7 +43,6 @@ build_dtbs() {
     # Fallback: build our custom DTS directly
     if [ ! -f "$OUTPUT/dtbs/qcom/sc8180xp-samsung-np545xla.dtb" ] && [ -f "$WORK/dts/sc8180xp-samsung-np545xla.dts" ]; then
         echo "  Building custom DTB from dts/..."
-        echo "  Building custom DTB from dts/..."
         cpp -nostdinc -I "$WORK/linux/include" \
             -I "$WORK/linux/arch/arm64/boot/dts" \
             -I "$WORK/linux/arch/arm64/boot/dts/qcom" \
@@ -83,13 +82,13 @@ case "$TARGET" in
         echo "========================================="
         echo " Building boot ISO"
         echo "========================================="
-        /work/src/build-iso.sh "$@"
+        /work/src/build-iso.sh
         ;;
     all)
         echo "========================================="
         echo " Building kernel + DTBs + modules + ISO"
         echo "========================================="
-        make -j$JOBS Image.gz dtbs modules
+        make -j$JOBS Image.gz modules
 
         cp arch/arm64/boot/Image.gz "$OUTPUT/vmlinuz-np545xla"
         echo "  → $OUTPUT/vmlinuz-np545xla"
@@ -107,7 +106,7 @@ case "$TARGET" in
         echo "========================================="
         echo " Building Debian packages"
         echo "========================================="
-        make -j$JOBS deb-pkg LOCALVERSION=-np545xla KDEB_CHANGELOG_DIST="$(lsb_release -sc 2>/dev/null || echo stable)"
+        make -j$JOBS bindeb-pkg LOCALVERSION=-np545xla KDEB_CHANGELOG_DIST="$(lsb_release -sc 2>/dev/null || echo stable)"
         # Move debs to output/
         mv ../linux-*.deb "$OUTPUT/" 2>/dev/null || true
         echo "  → $OUTPUT/linux-*.deb"

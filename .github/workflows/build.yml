@@ -47,8 +47,7 @@ jobs:
 
       - name: Build kernel
         run: |
-          docker run --platform linux/arm64 --rm \
-            -v "$PWD":/work \
+          docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev \
             np545xla-kernel-build \
             /work/src/build.sh ${BUILD_TARGET}
 

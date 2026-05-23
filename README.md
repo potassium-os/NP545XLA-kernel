@@ -29,7 +29,7 @@ docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev
 | `modules` | Loadable modules → `output/modules/` |
 | `debs` | Debian packages → `output/linux-*.deb` (DISABLED — no apt repo yet) |
 | `iso` | Boot ISO → `build/np545xla-boot.iso` |
-| `all` | Everything above |
+| `all` | Everything above (kernel + DTBs + modules + ISO) |
 | `clean` | Clean build artifacts |
 
 ## Build the Boot ISO

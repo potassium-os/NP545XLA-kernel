@@ -63,7 +63,7 @@ elif [ -z "$INITRD" ]; then
     # Download Ubuntu ISO if not present
     if [ ! -f "$UBUNTU_ISO" ]; then
         echo "Ubuntu ISO not found at $UBUNTU_ISO"
-        echo "Downloading from $UBUNTU_ISO_URL ..."
+        echo "Downloading ~4GB from $UBUNTU_ISO_URL ..."
         mkdir -p "$(dirname "$UBUNTU_ISO")"
         curl -fSL -o "$UBUNTU_ISO" "$UBUNTU_ISO_URL"
     fi

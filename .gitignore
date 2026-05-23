@@ -10,4 +10,5 @@ dts/*.dtb
 dts/*.dts.pre
 
 # ISO images (too large for git)
+# Ubuntu ISO stays in src/ after download for rebuilds (~4GB)
 src/*.iso
