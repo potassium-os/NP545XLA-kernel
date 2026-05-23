@@ -1,0 +1,88 @@
+# name: Publish kernel to apt repository
+#
+# DISABLED — commented out until the kernel actually boots.
+# Uncomment to enable once we have a working kernel build.
+#
+# This workflow:
+#   1. Builds Debian kernel packages
+#   2. Generates apt Packages/Release indices
+#   3. Signs with GPG (key from GITHUB_SECRET_KERNEL_APT_GPG_KEY)
+#   4. Deploys to GitHub Pages → https://potassium-os.github.io/NP545XLA-kernel/apt
+#
+# User experience after enabling:
+#   curl -fsSL https://potassium-os.github.io/NP545XLA-kernel/apt.gpg | sudo tee /etc/apt/trusted.gpg.d/potassium-os.asc
+#   echo "deb [arch=arm64 signed-by=/etc/apt/trusted.gpg.d/potassium-os.asc] https://potassium-os.github.io/NP545XLA-kernel/apt stable main" | sudo tee /etc/apt/sources.list.d/potassium-os.list
+#   sudo apt update && sudo apt install linux-image-7.0.0-np545xla
+
+# on:
+#   push:
+#     branches: [main]
+#     tags:
+#       - 'v*'
+#   workflow_dispatch:
+#
+# jobs:
+#   apt-repo:
+#     runs-on: ubuntu-latest
+#     timeout-minutes: 60
+#     permissions:
+#       contents: write
+#       pages: write
+#     environment:
+#       name: github-pages
+#       url: ${{ steps.deployment.outputs.page_url }}
+#
+#     steps:
+#       - name: Checkout
+#         uses: actions/checkout@v4
+#
+#       - name: Clone kernel source
+#         run: |
+#           KERNEL_TAG=$(git describe --tags --abbrev=0)
+#           git clone --depth 1 --branch ${KERNEL_TAG#v} https://github.com/torvalds/linux.git linux
+#
+#       - name: Set up QEMU
+#         uses: docker/setup-qemu-action@v3
+#
+#       - name: Build Docker image
+#         run: docker build --platform linux/arm64 -t np545xla-kernel-build .
+#
+#       - name: Build debs
+#         run: |
+#           docker run --platform linux/arm64 --rm \
+#             -v "$PWD":/work \
+#             -w /work/linux \
+#             np545xla-kernel-build \
+#             /work/src/build.sh debs
+#
+#       - name: Import GPG key
+#         run: |
+#           echo "${{ secrets.KERNEL_APT_GPG_KEY }}" | gpg --import -
+#           echo "${{ secrets.KERNEL_APT_GPG_KEY_OWNERTRUST }}" | gpg --import-ownertrust -
+#
+#       - name: Build apt repository
+#         run: |
+#           mkdir -p apt/pool/main/l/linux-np545xla
+#           cp output/*.deb apt/pool/main/l/linux-np545xla/
+#
+#           # Generate Packages index
+#           dpkg-scanpackages --multiversion apt/pool > apt/dists/stable/main/binary-arm64/Packages
+#           gzip -k apt/dists/stable/main/binary-arm64/Packages
+#
+#           # Generate Release
+#           cd apt
+#           apt-ftparchive release . > dists/stable/Release
+#           cd ..
+#
+#           # Sign Release
+#           gpg --batch --yes -abs -o apt/dists/stable/Release.gpg apt/dists/stable/Release
+#           gpg --batch --yes -arsa -o apt/dists/stable/InRelease apt/dists/stable/Release
+#
+#       - name: Export apt.gpg public key
+#         run: |
+#           gpg --export -a > apt/apt.gpg
+#
+#       - name: Upload to GitHub Pages
+#         uses: actions/deploy-pages@v4
+#         with:
+#           medium: direct

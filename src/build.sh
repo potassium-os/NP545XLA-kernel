@@ -95,6 +95,15 @@ case "$TARGET" in
         # Build the ISO with our custom kernel
         /work/src/build-iso.sh
         ;;
+    debs)
+        echo "========================================="
+        echo " Building Debian packages"
+        echo "========================================="
+        make -j$JOBS deb-pkg LOCALVERSION=-np545xla KDEB_CHANGELOG_DIST="$(lsb_release -sc 2>/dev/null || echo stable)"
+        # Move debs to output/
+        mv ../linux-*.deb "$OUTPUT/" 2>/dev/null || true
+        echo "  → $OUTPUT/linux-*.deb"
+        ;;
     clean)
         echo "Cleaning..."
         make clean
@@ -102,7 +111,7 @@ case "$TARGET" in
         ;;
     *)
         echo "Unknown target: $TARGET"
-        echo "Usage: $0 [kernel|dtbs|modules|iso|all|clean]"
+        echo "Usage: $0 [kernel|dtbs|modules|debs|iso|all|clean]"
         exit 1
         ;;
 esac

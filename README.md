@@ -9,41 +9,15 @@ The stock Ubuntu kernel doesn't include sc8180x-specific drivers (GCC, interconn
 ## Quick Start
 
 ```bash
-# Clone this repo
 git clone https://github.com/potassium-os/NP545XLA-kernel.git
 cd NP545XLA-kernel
 
 # Shallow clone the kernel source (v7.0)
 git clone --depth 1 --branch v7.0 https://github.com/torvalds/linux.git linux
 
-# Build the Docker image (x86 host, cross-compiles arm64)
+# Build everything: kernel + DTBs + modules
 docker build --platform linux/arm64 -t np545xla-kernel-build .
-
-# Build everything: kernel + DTBs + modules + boot ISO
 docker run --platform linux/arm64 --rm -v "$PWD":/work np545xla-kernel-build /work/src/build.sh all
-
-# Or build individual components:
-docker run --platform linux/arm64 --rm -v "$PWD":/work np545xla-kernel-build /work/src/build.sh kernel
-docker run --platform linux/arm64 --rm -v "$PWD":/work np545xla-kernel-build /work/src/build.sh dtbs
-docker run --platform linux/arm64 --rm -v "$PWD":/work np545xla-kernel-build /work/src/build.sh modules
-```
-
-### Build the boot ISO
-
-The ISO bundles the kernel, DTB, and GRUB into a Samsung-UEFI-compatible El Torito boot image:
-
-```bash
-# Requires --privileged and /dev access for loop devices
-docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev np545xla-kernel-build /work/src/build.sh iso
-
-# With Ubuntu initrd fallback (if no custom initrd):
-docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev np545xla-kernel-build /work/src/build-iso.sh /work/src/ubuntu-26.04-desktop-arm64.iso
-```
-
-### Flash to USB and boot
-
-```bash
-dd if=build/np545xla-boot.iso of=/dev/sdX bs=4M status=progress
 ```
 
 ## Build Targets
@@ -53,9 +27,18 @@ dd if=build/np545xla-boot.iso of=/dev/sdX bs=4M status=progress
 | `kernel` | `Image.gz` → `output/vmlinuz-np545xla` |
 | `dtbs` | Device tree blobs → `output/dtbs/` |
 | `modules` | Loadable modules → `output/modules/` |
+| `debs` | Debian packages → `output/linux-*.deb` (DISABLED — no apt repo yet) |
 | `iso` | Boot ISO → `build/np545xla-boot.iso` |
 | `all` | Everything above |
 | `clean` | Clean build artifacts |
+
+## Build the Boot ISO
+
+```bash
+docker run --platform linux/arm64 --rm --privileged -v "$PWD":/work -v /dev:/dev np545xla-kernel-build /work/src/build.sh iso
+```
+
+Flash: `dd if=build/np545xla-boot.iso of=/dev/sdX bs=4M status=progress`
 
 ## Configuration
 
@@ -71,61 +54,42 @@ dd if=build/np545xla-boot.iso of=/dev/sdX bs=4M status=progress
 - **Pinctrl:** `pinctrl-sc8180x`
 - **PHY:** `phy-qcom-qmp-ufs`, `phy-qcom-qmp-usb`
 
-WiFi (ath11k) and remoteproc are modules — they need firmware that's loaded after rootfs mounts.
+WiFi (ath11k) and remoteproc are modules — they need firmware after rootfs mounts.
 
 ## Device Tree
 
-`dts/sc8180xp-samsung-np545xla.dts` — board-specific DTS for the NP545XLA. Includes:
-- UART12 (QUP1 SE10) debug console at 0xA90000
-- UFS storage, USB (primary + secondary)
-- PMIC regulators, GPIO keys
-- Reserved memory regions
-
-The DTS is built as part of `dtbs` target or can be built standalone via the Makefile in `dts/`.
+`dts/sc8180xp-samsung-np545xla.dts` — board DTS includes UART12 debug console, UFS, USB, PMIC regulators, GPIO keys.
 
 ## GRUB Config
 
-`src/grub.cfg` — 13 boot entries covering:
-- Standard DT boot (fbcon only)
-- Serial console variants (ttyMSM0/ttyS0/ttyAMA0)
-- Initrd debug shells (`break=top`, `break=premount`)
-- nomodeset entries (keeps efifb, prevents DRM blanking)
-- IOMMU bypass (`iommu=off`) for testing
-- ACPI fallback
+`src/grub.cfg` — 13 boot entries: standard, serial variants (ttyMSM0/ttyS0/ttyAMA0), initrd debug shells (`break=top`, `break=premount`), nomodeset, IOMMU bypass, ACPI fallback.
 
 ## GitHub Actions
 
-Pushes to `main` automatically build the kernel. Artifacts are uploaded:
-- `vmlinuz-np545xla` — the kernel image
-- `dtbs-np545xla` — device tree blobs
-- `modules-np545xla` — loadable kernel modules
+Pushes to `main` build and upload artifacts (vmlinuz, DTBs, modules).
 
-You can also trigger a manual build via workflow dispatch, optionally specifying a kernel tag.
+An apt repository workflow is scaffolded in `.github/workflows/publish-apt.yml` (commented out until we have a booting kernel + GPG key). When enabled it publishes signed `.deb` packages to GitHub Pages.
 
 ## Repository Layout
 
 ```
-├── Dockerfile               ← Cross-compilation + ISO builder container
-├── configs/
-│   └── np545xla_defconfig   ← Kernel configuration
+├── Dockerfile
+├── configs/np545xla_defconfig
 ├── dts/
-│   ├── sc8180xp-samsung-np545xla.dts  ← Board device tree
-│   ├── Makefile                         ← Standalone DTB build
-│   └── QUESTIONS.md                     ← Open design questions
+│   ├── sc8180xp-samsung-np545xla.dts
+│   ├── Makefile
+│   └── QUESTIONS.md
 ├── src/
-│   ├── build.sh             ← Kernel build script (runs in Docker)
-│   ├── build-iso.sh         ← ISO builder (runs in Docker)
-│   └── grub.cfg             ← GRUB boot menu
-├── .github/
-│   └── workflows/
-│       └── build.yml        ← CI: build on push, upload artifacts
-├── linux/                   ← Kernel source (shallow clone, gitignored)
-└── output/                  ← Build output (gitignored)
-    ├── vmlinuz-np545xla
-    ├── dtbs/
-    └── modules/
+│   ├── build.sh
+│   ├── build-iso.sh
+│   └── grub.cfg
+├── .github/workflows/
+│   ├── build.yml
+│   └── publish-apt.yml       ← DISABLED
+├── linux/                    ← gitignored
+└── output/                   ← gitignored
 ```
 
 ## License
 
-GPL-2.0 — same as the Linux kernel
+GPL-2.0
