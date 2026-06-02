@@ -2,7 +2,7 @@
 # Build the NP545XLA kernel inside the Docker container
 #
 # Usage: docker run --rm -v "$PWD":/work np545xla-kernel-build [target]
-#   target: kernel (default), dtbs, modules, iso, pxe, all
+#   target: kernel (default), dtbs, modules, iso, pxe, usb, all
 #
 # Output goes to /work/output/
 
@@ -90,6 +90,12 @@ case "$TARGET" in
         echo "========================================="
         /work/src/build-grub-netboot.sh
         ;;
+    usb)
+        echo "========================================="
+        echo " Building USB-HTTP boot stick image"
+        echo "========================================="
+        /work/src/build-usb-http-stick.sh
+        ;;
     all)
         echo "========================================="
         echo " Building kernel + DTBs + modules + ISO"
@@ -110,6 +116,9 @@ case "$TARGET" in
 
         # Build the PXE netboot binary
         /work/src/build-grub-netboot.sh
+
+        # Build the USB-HTTP boot stick image
+        /work/src/build-usb-http-stick.sh
         ;;
     debs)
         echo "========================================="
@@ -127,7 +136,7 @@ case "$TARGET" in
         ;;
     *)
         echo "Unknown target: $TARGET"
-        echo "Usage: $0 [kernel|dtbs|modules|debs|iso|pxe|all|clean]"
+        echo "Usage: $0 [kernel|dtbs|modules|debs|iso|pxe|usb|all|clean]"
         exit 1
         ;;
 esac
