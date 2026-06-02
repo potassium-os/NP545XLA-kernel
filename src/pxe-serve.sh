@@ -2,16 +2,16 @@
 # src/pxe-serve.sh — One-shot PXE server + netconsole listener
 #
 # Sets up the network interface, starts a UDP listener for kernel netconsole
-# output, and runs tsbootkit-pxed. Cleans up on exit.
+# output, and runs tsbootkit-pxed with the config from src/tsbootkit.yaml.
+# Cleans up on exit.
 #
 # Usage: sudo bash src/pxe-serve.sh [interface]
 #
 # Options:
-#   -p, --http-port PORT   HTTP port (default: 8080)
+#   --ip IP               Server IP (default: 192.168.202.5)
 #   -n, --netconsole PORT  Netconsole UDP listen port (default: 6666)
 #   --no-netconsole        Don't start the netconsole listener
 #   -v, -vv, -vvv          Verbosity (passed to tsbootkit)
-#   --config FILE          Use tsbootkit YAML config instead of CLI flags
 #
 # The netconsole listener prints kernel log output to stdout AND saves it
 # to pxe/netconsole.log. Useful for debugging early boot without a serial cable.
@@ -22,24 +22,23 @@ REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Defaults
 IFACE=""
-HTTP_PORT=8080
+SERVER_IP="192.168.202.5"
 NETCONSOLE_PORT=6666
 SKIP_NETCONSOLE=false
-VERBOSE="-v"
-CONFIG=""
-SERVER_IP="192.168.202.5"
+VERBOSE=""
 NETCONSOLE_LOG="$REPO_ROOT/pxe/netconsole.log"
+CONFIG="$REPO_ROOT/src/tsbootkit.yaml"
+RUNTIME_CONFIG=""
 
 # Parse args
 while [[ $# -gt 0 ]]; do
     case "$1" in
-        -p|--http-port)  HTTP_PORT="$2"; shift 2 ;;
         -n|--netconsole) NETCONSOLE_PORT="$2"; shift 2 ;;
+        --ip)            SERVER_IP="$2"; shift 2 ;;
         --no-netconsole) SKIP_NETCONSOLE=true; shift ;;
-        -vvv)            VERBOSE="-vvv"; shift ;;
-        -vv)             VERBOSE="-vv"; shift ;;
-        -v)              VERBOSE="-v"; shift ;;
-        --config)        CONFIG="$2"; shift 2 ;;
+        -vvv)            VERBOSE="$VERBOSE -vvv"; shift ;;
+        -vv)             VERBOSE="$VERBOSE -vv"; shift ;;
+        -v)              VERBOSE="$VERBOSE -v"; shift ;;
         -*)              echo "Unknown option: $1"; exit 1 ;;
         *)               IFACE="$1"; shift ;;
     esac
@@ -69,86 +68,94 @@ if ! command -v tsbootkit-pxed &>/dev/null; then
     exit 1
 fi
 
+# Verify config
+if [ ! -f "$CONFIG" ]; then
+    echo "ERROR: Config not found at $CONFIG"
+    exit 1
+fi
+
+# Generate a runtime config with the correct interface
+# (don't modify the source file — it may be tracked by git)
+RUNTIME_CONFIG=$(mktemp /tmp/tsbootkit-XXXXXX)
+sed "s/^interface:.*/interface: $IFACE/" "$CONFIG" > "$RUNTIME_CONFIG"
+# Also update tftpRoot to be absolute (tsbootkit resolves relative to cwd)
+if [[ "$REPO_ROOT" != "/work" ]]; then
+    sed -i '' "s|^tftpRoot:.*|tftpRoot: $REPO_ROOT/pxe/tftp|" "$RUNTIME_CONFIG"
+fi
+
 # Cleanup trap
+NETCONSOLE_PID=""
+
 cleanup() {
     echo ""
     echo "Cleaning up..."
     if [ -n "$NETCONSOLE_PID" ] && kill -0 "$NETCONSOLE_PID" 2>/dev/null; then
         kill "$NETCONSOLE_PID" 2>/dev/null || true
+        wait "$NETCONSOLE_PID" 2>/dev/null || true
         echo "  ✓ netconsole listener stopped"
     fi
-    if [ -n "$TMUX_PID" ] && kill -0 "$TMUX_PID" 2>/dev/null; then
-        kill "$TMUX_PID" 2>/dev/null || true
-        echo "  ✓ tmux session stopped"
+    # Belt and suspenders: kill anything still on the netconsole port
+    if [ "$SKIP_NETCONSOLE" = false ] && command -v lsof &>/dev/null; then
+        STALE=$(sudo lsof -ti UDP:"$NETCONSOLE_PORT" 2>/dev/null || true)
+        if [ -n "$STALE" ]; then
+            sudo kill $STALE 2>/dev/null || true
+        fi
     fi
-    # Remove IP assignment (best effort)
-    if command -v ip &>/dev/null; then
-        sudo ip addr del "$SERVER_IP/24" dev "$IFACE" 2>/dev/null || true
-    else
-        sudo ifconfig "$IFACE" 0.0.0.0 2>/dev/null || true
-    fi
+    # Clean up runtime config
+    [ -f "$RUNTIME_CONFIG" ] && rm -f "$RUNTIME_CONFIG"
     echo "Done."
 }
-NETCONSOLE_PID=""
-TMUX_PID=""
 trap cleanup EXIT INT TERM
 
-# Assign IP
-echo "Setting $SERVER_IP on $IFACE..."
-if command -v ip &>/dev/null; then
-    sudo ip addr add "$SERVER_IP/24" dev "$IFACE" 2>/dev/null || true
-    sudo ip link set "$IFACE" up
-else
-    sudo ifconfig "$IFACE" "$SERVER_IP" netmask 255.255.255.0 up
+# Kill any stale listeners from previous runs
+if [ "$SKIP_NETCONSOLE" = false ]; then
+    # Kill stale socat/netcat on the netconsole port
+    if command -v lsof &>/dev/null; then
+        STALE=$(sudo lsof -ti UDP:"$NETCONSOLE_PORT" 2>/dev/null || true)
+        if [ -n "$STALE" ]; then
+            echo "Killing stale listener(s) on UDP $NETCONSOLE_PORT: $STALE"
+            sudo kill $STALE 2>/dev/null || true
+            sleep 0.5
+        fi
+    fi
 fi
 
 # Start netconsole listener
 if [ "$SKIP_NETCONSOLE" = false ]; then
-    # Prefer socat (supports broadcast + multicast), fall back to netcat
-    NETCONSOLE_CMD=""
-    if command -v socat &>/dev/null; then
-        NETCONSOLE_CMD="socat -u UDP-RECVFROM:$NETCONSOLE_PORT,bind=$SERVER_IP STDOUT"
-    elif command -v nc &>/dev/null; then
-        # Try GNU netcat with -u (UDP) -l (listen)
-        if nc -u -l 2>&1 | grep -q "usage\|option"; then
-            NETCONSOLE_CMD="nc -u -l $NETCONSOLE_PORT"
-        fi
+    if ! command -v socat &>/dev/null; then
+        echo "ERROR: socat not found. Install with: brew install socat (macOS) or apt install socat (Linux)"
+        exit 1
     fi
 
-    if [ -n "$NETCONSOLE_CMD" ]; then
-        mkdir -p "$(dirname "$NETCONSOLE_LOG")"
-        echo "Starting netconsole listener on UDP $SERVER_IP:$NETCONSOLE_PORT..."
-        echo "  (logging to $NETCONSOLE_LOG)"
-        # Tee to both stdout and log file
-        $NETCONSOLE_CMD | tee "$NETCONSOLE_LOG" &
+    mkdir -p "$(dirname "$NETCONSOLE_LOG")"
+    echo "Starting netconsole listener on UDP $SERVER_IP:$NETCONSOLE_PORT..."
+    echo "  (logging to $NETCONSOLE_LOG)"
+    # Start socat in a background subshell that waits for the IP
+    # so it doesn't block tsbootkit from starting
+    (
+        while true; do
+            if command -v ip &>/dev/null; then
+                HAS_IP=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -c "inet $SERVER_IP" || true)
+            else
+                HAS_IP=$(ifconfig "$IFACE" 2>/dev/null | grep -c "inet $SERVER_IP" || true)
+            fi
+            [ "$HAS_IP" -gt 0 ] && break
+            sleep 1
+        done
+        socat -u UDP-RECVFROM:$NETCONSOLE_PORT,bind=$SERVER_IP STDOUT &
         NETCONSOLE_PID=$!
-        echo "  ✓ PID $NETCONSOLE_PID"
-    else
-        echo "WARNING: Neither socat nor netcat found. Skipping netconsole listener."
-        echo "  Install socat: brew install socat (macOS) or apt install socat (Linux)"
-    fi
+        echo "  ✓ socat PID $NETCONSOLE_PID"
+    ) &
 fi
 
-# Start tsbootkit-pxed
+# Start tsbootkit-pxed with config
 echo ""
 echo "Starting tsbootkit-pxed (Ctrl+C to stop)..."
 echo "  Interface:  $IFACE"
-echo "  TFTP root:  $REPO_ROOT/pxe/tftp/"
-echo "  HTTP port:  $HTTP_PORT"
+echo "  Config:     $RUNTIME_CONFIG (from $CONFIG)"
 if [ "$SKIP_NETCONSOLE" = false ] && [ -n "$NETCONSOLE_PID" ]; then
     echo "  Netconsole: UDP $NETCONSOLE_PORT → $NETCONSOLE_LOG"
 fi
 echo ""
 
-if [ -n "$CONFIG" ]; then
-    sudo tsbootkit-pxed "$IFACE" BOOTAA64.EFI "$REPO_ROOT/pxe/tftp" \
-        --http-port "$HTTP_PORT" \
-        --config "$CONFIG" \
-        --wait \
-        $VERBOSE
-else
-    sudo tsbootkit-pxed "$IFACE" BOOTAA64.EFI "$REPO_ROOT/pxe/tftp" \
-        --http-port "$HTTP_PORT" \
-        --wait \
-        $VERBOSE
-fi
+sudo tsbootkit-pxed --config "$RUNTIME_CONFIG" $VERBOSE
