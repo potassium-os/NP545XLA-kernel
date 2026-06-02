@@ -88,4 +88,4 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: usb-http-stick
-          path: pxe/usb-http-stick.img
+          path: pxe/usb-http-stick.iso

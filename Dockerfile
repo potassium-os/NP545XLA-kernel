@@ -16,6 +16,7 @@ RUN apt-get update && apt-get install -y \
     python3 \
     kmod \
     git \
+    gdisk \
     xorriso \
     grub-efi-arm64-bin \
     dosfstools \

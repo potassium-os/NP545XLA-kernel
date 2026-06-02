@@ -14,7 +14,7 @@ dts/*.dts.pre
 src/*.iso
 
 # PXE TFTP boot files (large, built by build.sh)
-pxe/tftp/boot/
+pxe/**
 
 # PXE netconsole log
 pxe/netconsole.log
