@@ -107,7 +107,7 @@ if [ "$SKIP_NETCONSOLE" = false ]; then
     # Prefer socat (supports broadcast + multicast), fall back to netcat
     NETCONSOLE_CMD=""
     if command -v socat &>/dev/null; then
-        NETCONSOLE_CMD="socat -u UDP-RECV:$NETCONSOLE_PORT,bind=$SERVER_IP,fork STDOUT"
+        NETCONSOLE_CMD="socat -u UDP-RECVFROM:$NETCONSOLE_PORT,bind=$SERVER_IP STDOUT"
     elif command -v nc &>/dev/null; then
         # Try GNU netcat with -u (UDP) -l (listen)
         if nc -u -l 2>&1 | grep -q "usage\|option"; then
@@ -141,13 +141,13 @@ fi
 echo ""
 
 if [ -n "$CONFIG" ]; then
-    sudo tsbootkit-pxed "$IFACE" "$REPO_ROOT/pxe/tftp" BOOTAA64.EFI \
+    sudo tsbootkit-pxed "$IFACE" BOOTAA64.EFI "$REPO_ROOT/pxe/tftp" \
         --http-port "$HTTP_PORT" \
         --config "$CONFIG" \
         --wait \
         $VERBOSE
 else
-    sudo tsbootkit-pxed "$IFACE" "$REPO_ROOT/pxe/tftp" BOOTAA64.EFI \
+    sudo tsbootkit-pxed "$IFACE" BOOTAA64.EFI "$REPO_ROOT/pxe/tftp" \
         --http-port "$HTTP_PORT" \
         --wait \
         $VERBOSE
