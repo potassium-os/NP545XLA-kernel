@@ -12,3 +12,6 @@ dts/*.dts.pre
 # ISO images (too large for git)
 # Ubuntu ISO stays in src/ after download for rebuilds (~4GB)
 src/*.iso
+
+# PXE TFTP boot files (large, built by build.sh)
+pxe/tftp/boot/

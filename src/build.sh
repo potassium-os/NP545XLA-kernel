@@ -2,7 +2,7 @@
 # Build the NP545XLA kernel inside the Docker container
 #
 # Usage: docker run --rm -v "$PWD":/work np545xla-kernel-build [target]
-#   target: kernel (default), dtbs, modules, iso, all
+#   target: kernel (default), dtbs, modules, iso, pxe, all
 #
 # Output goes to /work/output/
 
@@ -84,6 +84,12 @@ case "$TARGET" in
         echo "========================================="
         /work/src/build-iso.sh
         ;;
+    pxe)
+        echo "========================================="
+        echo " Building PXE netboot binary"
+        echo "========================================="
+        /work/src/build-grub-netboot.sh
+        ;;
     all)
         echo "========================================="
         echo " Building kernel + DTBs + modules + ISO"
@@ -101,6 +107,9 @@ case "$TARGET" in
 
         # Build the ISO with our custom kernel
         /work/src/build-iso.sh
+
+        # Build the PXE netboot binary
+        /work/src/build-grub-netboot.sh
         ;;
     debs)
         echo "========================================="
@@ -118,7 +127,7 @@ case "$TARGET" in
         ;;
     *)
         echo "Unknown target: $TARGET"
-        echo "Usage: $0 [kernel|dtbs|modules|debs|iso|all|clean]"
+        echo "Usage: $0 [kernel|dtbs|modules|debs|iso|pxe|all|clean]"
         exit 1
         ;;
 esac

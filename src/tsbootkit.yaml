@@ -1,0 +1,22 @@
+# src/tsbootkit.yaml — PXE server config for NP545XLA
+#
+# Start with: sudo tsbootkit-pxed --config src/tsbootkit.yaml
+#
+# See: docs/pxe-boot-plan.md for full setup instructions.
+
+interface: en0
+bootFile: BOOTAA64.EFI
+tftpRoot: pxe/tftp
+mode: dhcp
+httpPort: 8080
+logging:
+  level: info
+
+bootFiles:
+  efiARM64: BOOTAA64.EFI
+
+# Uncomment and set the Samsung's USB-Ethernet MAC once known:
+# reservations:
+#   - mac: XX:XX:XX:XX:XX:XX
+#     ip: 192.168.202.50
+#     bootFile: BOOTAA64.EFI

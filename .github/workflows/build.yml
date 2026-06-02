@@ -15,7 +15,7 @@ on:
         required: false
         default: 'v7.0'
       build_target:
-        description: 'Build target (kernel, dtbs, modules, all)'
+        description: 'Build target (kernel, dtbs, modules, iso, pxe, all)'
         required: false
         default: 'all'
 
@@ -68,3 +68,10 @@ jobs:
         with:
           name: modules-np545xla
           path: output/modules/
+
+      - name: Upload PXE netboot binary
+        if: ${{ env.BUILD_TARGET == 'all' || env.BUILD_TARGET == 'pxe' }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: pxe-netboot
+          path: pxe/tftp/BOOTAA64.EFI
