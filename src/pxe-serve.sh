@@ -21,7 +21,7 @@ set -euo pipefail
 REPO_ROOT="$(cd "$(dirname "$0")/.." && pwd)"
 
 # Defaults
-IFACE=""
+IFACE="en6"
 SERVER_IP="192.168.202.5"
 NETCONSOLE_PORT=6666
 SKIP_NETCONSOLE=false
@@ -43,18 +43,6 @@ while [[ $# -gt 0 ]]; do
         *)               IFACE="$1"; shift ;;
     esac
 done
-
-# Auto-detect USB ethernet interface if not specified
-if [ -z "$IFACE" ]; then
-    if command -v ip &>/dev/null; then
-        IFACE=$(ip -br link 2>/dev/null | grep -i "enx\|eth" | awk '{print $1}' | head -1)
-    fi
-    if [ -z "$IFACE" ] && command -v networksetup &>/dev/null; then
-        IFACE=$(networksetup -listallhardwareports 2>/dev/null | \
-            grep -B1 -i "ethernet\|usb\|thunderbolt" | \
-            grep "Device" | awk '{print $2}' | head -1)
-    fi
-fi
 
 if [ -z "$IFACE" ]; then
     echo "ERROR: Could not detect USB ethernet interface."

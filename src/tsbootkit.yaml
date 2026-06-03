@@ -17,8 +17,11 @@ logging:
   level: debug
 wait: true
 
-# Uncomment and set once you know the Samsung's USB-Ethernet MAC:
-# reservations:
-#   - mac: XX:XX:XX:XX:XX:XX
-#     ip: 192.168.202.50
-#     bootFile: BOOTAA64.EFI
+dhcp:
+  leaseTime: 600       # seconds (60–86400)
+  answerAll: true      # respond to non-PXE DHCP requests?
+
+reservations:
+  - mac: 9c:69:d3:41:7c:d6
+    ip: 192.168.202.50
+    bootFile: BOOTAA64.EFI
