@@ -38,10 +38,10 @@ fi
 build_dtbs() {
     make -j$JOBS dtbs
     mkdir -p "$OUTPUT/dtbs/qcom"
-    # Copy from kernel tree if our DTS is included
-    cp arch/arm64/boot/dts/qcom/sc8180xp-samsung-np545xla.dtb "$OUTPUT/dtbs/qcom/" 2>/dev/null || true
+    # Copy from kernel tree if our DTS is included - for the future
+    # cp arch/arm64/boot/dts/qcom/sc8180xp-samsung-np545xla.dtb "$OUTPUT/dtbs/qcom/" 2>/dev/null || true
     # Fallback: build our custom DTS directly
-    if [ ! -f "$OUTPUT/dtbs/qcom/sc8180xp-samsung-np545xla.dtb" ] && [ -f "$WORK/dts/sc8180xp-samsung-np545xla.dts" ]; then
+    if [ -f "$WORK/dts/sc8180xp-samsung-np545xla.dts" ]; then
         echo "  Building custom DTB from dts/..."
         cpp -nostdinc -I "$WORK/linux/include" \
             -I "$WORK/linux/arch/arm64/boot/dts" \

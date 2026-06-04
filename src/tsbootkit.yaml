@@ -13,6 +13,7 @@ bootFile: BOOTAA64.EFI
 tftpRoot: pxe/tftp
 mode: dhcp
 httpPort: 8080
+healthPort: 9470
 logging:
   level: debug
 wait: true

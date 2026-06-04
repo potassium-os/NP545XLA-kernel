@@ -119,21 +119,27 @@ if [ "$SKIP_NETCONSOLE" = false ]; then
     echo "Starting netconsole listener on UDP $SERVER_IP:$NETCONSOLE_PORT..."
     echo "  (logging to $NETCONSOLE_LOG)"
     # Start socat in a background subshell that waits for the IP
-    # so it doesn't block tsbootkit from starting
+    # and auto-restarts if the link goes down (cable unplug, NIC reset, etc.)
     (
         while true; do
-            if command -v ip &>/dev/null; then
-                HAS_IP=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -c "inet $SERVER_IP" || true)
-            else
-                HAS_IP=$(ifconfig "$IFACE" 2>/dev/null | grep -c "inet $SERVER_IP" || true)
-            fi
-            [ "$HAS_IP" -gt 0 ] && break
-            sleep 1
+            # Wait for the interface to have our IP
+            while true; do
+                if command -v ip &>/dev/null; then
+                    HAS_IP=$(ip -4 addr show "$IFACE" 2>/dev/null | grep -c "inet $SERVER_IP" || true)
+                else
+                    HAS_IP=$(ifconfig "$IFACE" 2>/dev/null | grep -c "inet $SERVER_IP" || true)
+                fi
+                [ "$HAS_IP" -gt 0 ] && break
+                sleep 1
+            done
+            echo "  ✓ socat starting on UDP $SERVER_IP:$NETCONSOLE_PORT"
+            socat -u UDP-RECVFROM:$NETCONSOLE_PORT,bind=$SERVER_IP STDOUT 2>/dev/null | tee -a "$NETCONSOLE_LOG"
+            # socat exited — link probably went down
+            echo "  ⚠ socat exited (link down?), restarting in 2s..."
+            sleep 2
         done
-        socat -u UDP-RECVFROM:$NETCONSOLE_PORT,bind=$SERVER_IP STDOUT &
-        NETCONSOLE_PID=$!
-        echo "  ✓ socat PID $NETCONSOLE_PID"
     ) &
+    NETCONSOLE_PID=$!
 fi
 
 # Start tsbootkit-pxed with config
